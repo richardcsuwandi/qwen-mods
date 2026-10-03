@@ -1,0 +1,6 @@
+{
+  "id": "hello",
+  "name": "Hello mod",
+  "apiVersion": 1,
+  "entry": "./mod.mjs"
+}

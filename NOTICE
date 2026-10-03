@@ -1,0 +1,11 @@
+Qwen Mods
+Copyright 2026 Richard Cornelius Suwandi
+
+Qwen-compatible ports inspired by Richard Cornelius Suwandi's Claude Mods:
+https://github.com/richardcsuwandi/claude-mods
+
+The adapters and deadline utilities were developed in a Qwen Code fork.
+Qwen Code is distributed under the Apache License, Version 2.0:
+https://github.com/QwenLM/qwen-code
+
+The Qwen Mods runtime and API are maintained separately in Qwen Code.

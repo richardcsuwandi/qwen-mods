@@ -1,0 +1,6 @@
+{
+  "id": "usage-bar",
+  "name": "Usage bar",
+  "apiVersion": 1,
+  "entry": "./mod.mjs"
+}

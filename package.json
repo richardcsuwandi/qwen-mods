@@ -1,0 +1,18 @@
+{
+  "name": "qwen-mods",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deadline, usage and context mods for the Qwen Mods runtime",
+  "type": "module",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test/mods.test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/richardcsuwandi/qwen-mods.git"
+  }
+}

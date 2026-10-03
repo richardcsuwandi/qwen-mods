@@ -1,0 +1,6 @@
+{
+  "id": "deadlines",
+  "name": "Deadline countdowns",
+  "apiVersion": 1,
+  "entry": "./mod.mjs"
+}

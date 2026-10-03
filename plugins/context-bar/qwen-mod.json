@@ -1,0 +1,6 @@
+{
+  "id": "context-bar",
+  "name": "Context breakdown",
+  "apiVersion": 1,
+  "entry": "./mod.mjs"
+}
