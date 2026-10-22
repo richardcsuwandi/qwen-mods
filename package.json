@@ -1,6 +1,6 @@
 {
   "name": "qwen-mods",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Deadline, usage and context mods for the Qwen Mods runtime",
   "type": "module",
@@ -9,10 +9,22 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/mods.test.mjs"
+    "test": "node --test test/"
   },
   "repository": {
     "type": "git",
     "url": "https://github.com/richardcsuwandi/qwen-mods.git"
+  },
+  "keywords": [
+    "qwen",
+    "qwen-code",
+    "mods",
+    "terminal",
+    "ink",
+    "cli"
+  ],
+  "homepage": "https://github.com/richardcsuwandi/qwen-mods#readme",
+  "bugs": {
+    "url": "https://github.com/richardcsuwandi/qwen-mods/issues"
   }
 }

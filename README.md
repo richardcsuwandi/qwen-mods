@@ -1,16 +1,36 @@
 # Qwen Mods
 
-Personal mods for Qwen Code, adapted from [Claude Mods](https://github.com/richardcsuwandi/claude-mods).
+[![test](https://github.com/richardcsuwandi/qwen-mods/actions/workflows/test.yml/badge.svg)](https://github.com/richardcsuwandi/qwen-mods/actions/workflows/test.yml)
 
-Deadlines, usage and context displays are ordinary modules built on the Qwen Mods API. Use them as they are, change them, or start your own mod from the hello example.
+Small terminal add-ons for [Qwen Code](https://github.com/QwenLM/qwen-code). A deadline countdown in the footer, a usage bar above the prompt, and a stacked breakdown of what fills your context window. Each one is an ordinary module on the Qwen Mods API, so you can use them as they are, change them, or start your own from the hello example.
 
-## Compatibility
+They are adapted from [Claude Mods](https://github.com/richardcsuwandi/claude-mods).
 
-**Requires the Qwen Mods runtime patch with API version 1 in the interactive Ink CLI.** The runtime is being prepared separately for Qwen Code. These modules do not currently work with stock Qwen Code or with Claude Code.
+> **Status.** These modules need the Qwen Mods runtime patch, API version 1, in the interactive Ink CLI. They do not run on stock Qwen Code or on Claude Code. The runtime is developed in a Qwen Code fork and is not submitted upstream yet. This repository holds the mods and examples, and the loader, API and UI integration belong in Qwen Code.
 
-This repository contains the mods and examples. The loader, API, lifecycle and UI integration belong in [Qwen Code](https://github.com/QwenLM/qwen-code). Runtime PR status: not submitted yet.
+## What they look like
 
-Mods execute trusted Node.js code with your account's access. Inspect a module before loading it. The runtime has no sandbox. Safe and bare modes prevent loading.
+These are sketches with made-up numbers, laid out by the formatting code in each module. Category names come from Qwen at runtime. Colors change with state and layouts shrink on narrow terminals.
+
+```text
+ context-bar    ██████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░▒▒▒▒▒▒
+                ~84.0k/200.0k (42%)  █ System prompt 9.0k  █ Tools 14.0k  █ Messages 61.0k  ░ Free 96.0k  ▒ Reserve 20.0k
+
+ usage-bar      ctx █████░░░░░░░ 42%  84.0k/200.0k  in 83.0k · out 5.0k  est. $0.31
+
+ footer         ◷ Paper submission 4d 3h 12m  +2
+```
+
+When the context passes 85 percent the usage bar adds a Compress button, and it turns red at 90 percent.
+
+## At a glance
+
+| Mod | Command | What it does |
+|-----|---------|--------------|
+| [Deadlines](plugins/deadlines) | `/ddl` | Live countdown to your next deadline, saved across restarts, with AoE and IANA time zones |
+| [Usage bar](plugins/usage-bar) | `/usage-bar` | Context fill, session tokens and estimated cost, with a one-time warning and a Compress button |
+| [Context bar](plugins/context-bar) | `/context-bar` | Stacked breakdown of context categories, free space and reserved compaction capacity |
+| [Hello](examples/hello) | `/hello` | The smallest useful mod, to copy from |
 
 ## Get started
 
@@ -49,7 +69,7 @@ To load a mod automatically in future sessions, use `enable` instead of `load`:
 
 No npm dependencies or build step are needed for these mods. Qwen supplies React and Ink.
 
-## Mods
+## Mod reference
 
 ### Deadlines
 
