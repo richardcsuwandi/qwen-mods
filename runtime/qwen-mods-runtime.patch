@@ -1,0 +1,2337 @@
+diff --git a/README.md b/README.md
+index 46ca528..5e86065 100644
+--- a/README.md
++++ b/README.md
+@@ -21,6 +21,12 @@
+ 
+ ![Qwen Code in the terminal, desktop app, browser, editor, and chat, with VS Code, Zed, JetBrains, Telegram, DingTalk, WeChat, and Feishu integrations](https://img.alicdn.com/imgextra/i1/O1CN01DXWdF8BDUdD3XPhl_!!6000000001721-2-tps-1743-902.png)
+ 
++## Qwen Mods
++
++The Qwen Mods runtime lets independently authored JavaScript modules register commands, terminal UI, session events and native hooks. It currently supports the interactive Ink terminal and executes trusted Node.js code.
++
++See the [runtime and API guide](docs/users/features/qwen-mods.md). Personal mods and examples are maintained separately in [richardcsuwandi/qwen-mods](https://github.com/richardcsuwandi/qwen-mods).
++
+ ## Why Qwen Code?
+ 
+ - **Agentic out of the box** — Auto-Memory, Auto-Skills, SubAgents, Agent Teams, and MCP. Dynamic workflows, zero setup.
+diff --git a/docs/design/qwen-mods.md b/docs/design/qwen-mods.md
+new file mode 100644
+index 0000000..2455990
+--- /dev/null
++++ b/docs/design/qwen-mods.md
+@@ -0,0 +1,33 @@
++# Qwen Mods
++
++[English](qwen-mods.md) | [简体中文](qwen-mods.zh-CN.md)
++
++## Problem
++
++Custom terminal views need to work with commands, session state and events. Users need a general local extension API for packaging that behavior and UI in independently authored modules. Claude Code Mods is the inspiration, not a compatibility target or a cloud hosting service.
++
++## Design
++
++One runtime belongs to each interactive Config. Explicit `/mods load <directory>` reads a `qwen-mod.json` manifest and imports its JavaScript entry. `/mods enable <directory>` also records the absolute directory in a user-owned registry. `--safe-mode` and `--bare` prevent module loading. Only this registry loads automatically. Projects cannot auto-execute modules through repository settings. `/mods unload <id>`, `/mods disable <id>`, and `/mods reload <id>` control lifecycle. Entry reload uses a fresh module URL. Transitive imports require restarting Qwen after edits.
++
++The version 1 API registers commands, React/Ink components in abovePrompt, belowPrompt and footer slots, session and turn listeners, and native Qwen function hooks. It supplies session usage and local context estimates, transient state, atomic persistent JSON updates, notifications, managed timers, cancellable HTTP fetch and subprocess execution, prompt submission and command dispatch. React and Ink come from the host to avoid duplicate React instances. An explicitly experimental Config escape hatch permits advanced integration with Qwen internals.
++
++Modules are trusted Node.js code with the user's filesystem, process, network and environment access. This is not a sandbox. Loading or enabling a directory is explicit authorization to execute it. Host HTTP supplies no credentials automatically. Cloud integration uses the mod author's endpoints and credentials. Existing Qwen tool permission checks still apply to normal submitted turns. Direct Node access is outside those checks.
++
++Commands enter the existing command service and use its collision and disabled-command handling. Native hooks are attached to the owning session, rebound when it changes, and removed individually. Managed hook dispatch and disabled hooks are reported as unsupported. API state survives entry reload, while persistent storage survives restarts. Cleanup aborts host requests and subprocesses and removes views, commands, timers and hooks. A failing mod registration is rolled back. Runtime error reporting and per-view boundaries keep ordinary mod failures from taking down the interface. Arbitrary trusted code can still terminate or block the process.
++
++## Repository split
++
++Qwen Code owns the generic runtime, API, command loading, UI slots and runtime tests. The separate [richardcsuwandi/qwen-mods](https://github.com/richardcsuwandi/qwen-mods) repository owns deadline, usage bar and context bar modules, a hello starter, their behavior tests and author instructions. Personal modules are not shipped in this repository. Runtime tests create temporary synthetic modules to verify the public contract without depending on the companion repository.
++
++## Files and scope
++
++`packages/cli/src/mods` owns API, registry, runtime and UI bridge. The existing slash command processor gains a loader, AppContainer owns lifecycle, and Composer/Footer render generic slots. The companion repository contains standalone modules and author instructions. The implementation targets interactive Ink. OpenTUI, headless and ACP do not load modules. There is no marketplace, remote installation, full-screen renderer replacement, automatic file watcher, dependency installer or Claude API compatibility promise. Authors can use Node packages installed alongside their entry.
++
++## Validation
++
++Confirm `/mods` is absent in the global baseline. Test manifest validation, explicit loading, persistent enable/disable, cleanup, entry reload, collisions, hook ownership, error rollback, storage concurrency and a separately authored module. Build, typecheck and bundle sequentially. Exercise the bundle in an isolated terminal with the examples, restart, toggle views, reload edited code and unload. No external model requests are needed for these checks. Native hook behavior is verified with focused tests, not claimed as a live provider run.
++
++## Acceptance and open questions
++
++A fourth module must add a command and live UI through only its manifest and entry. Disabling and restarting must keep it unloaded. Existing built-in commands must continue to work. Companion modules must remain independent of CLI implementation imports. The API is an initial version for local use. Distribution and upstream adoption remain future decisions.
+diff --git a/docs/design/qwen-mods.zh-CN.md b/docs/design/qwen-mods.zh-CN.md
+new file mode 100644
+index 0000000..e15664c
+--- /dev/null
++++ b/docs/design/qwen-mods.zh-CN.md
+@@ -0,0 +1,33 @@
++# Qwen Mods
++
++[English](qwen-mods.md) | [简体中文](qwen-mods.zh-CN.md)
++
++## 问题
++
++自定义终端视图需要与命令、会话状态和事件配合。用户需要通用本地扩展 API，以便把这些行为和界面组织为独立模块。Claude Code Mods 是灵感来源，不是兼容目标，也不是云托管服务。
++
++## 设计
++
++每个交互式 Config 拥有一个运行时。显式执行 `/mods load <directory>` 会读取 `qwen-mod.json` 清单并导入 JavaScript 入口。`/mods enable <directory>` 还会把绝对目录记录到用户注册表。`--safe-mode` 和 `--bare` 禁止加载模块。只有该注册表中的模块会自动加载，仓库设置不能自动执行模块。`/mods unload <id>`、`/mods disable <id>` 和 `/mods reload <id>` 管理生命周期。重载入口使用新的模块 URL，修改间接导入的文件后需要重启 Qwen。
++
++版本 1 API 支持注册命令、abovePrompt、belowPrompt 和 footer 插槽中的 React/Ink 组件、会话与轮次监听器，以及 Qwen 原生函数钩子。它提供会话用量、本地上下文估算、临时状态、原子持久化 JSON 更新、通知、托管定时器、可取消的 HTTP fetch 和子进程、提示提交及命令分发。React 与 Ink 由宿主提供，避免重复 React 实例。显式标为实验性的 Config 接口允许接入 Qwen 内部功能。
++
++模块是受信任的 Node.js 代码，拥有用户的文件系统、进程、网络和环境访问权限，不提供沙箱。加载或启用目录即明确授权执行该代码。宿主 HTTP 不自动提供凭据，云服务集成使用模块作者指定的端点与凭据。正常提交的轮次仍遵守 Qwen 工具权限检查，直接 Node 访问不经过这些检查。
++
++命令进入现有命令服务，使用其名称冲突与禁用处理。原生钩子绑定当前所属会话，会话变化时重新绑定，清理时逐项移除。托管钩子分发或禁用钩子时明确报告不支持。API 临时状态在入口重载后保留，持久化存储在重启后保留。清理会取消宿主请求和子进程，并移除视图、命令、定时器及钩子。注册失败会回滚。运行时错误报告与逐视图错误边界隔离普通模块故障，但任意受信任代码仍可能终止或阻塞进程。
++
++## 仓库拆分
++
++Qwen Code 负责通用运行时、API、命令加载、UI 插槽和运行时测试。独立的 [richardcsuwandi/qwen-mods](https://github.com/richardcsuwandi/qwen-mods) 仓库负责截止日期、用量条、上下文条模块、hello 入门示例、对应行为测试和作者指南。本仓库不分发个人模块。运行时测试创建临时合成模块，以验证公共接口，且不依赖配套仓库。
++
++## 文件与范围
++
++`packages/cli/src/mods` 包含 API、注册表、运行时和 UI 桥接。现有命令处理器增加加载器，AppContainer 管理生命周期，Composer/Footer 渲染通用插槽。配套仓库包含独立模块和作者指南。实现面向交互式 Ink，OpenTUI、无界面和 ACP 模式不加载模块。不包含市场、远程安装、全屏渲染器替换、自动文件监听、依赖安装器，也不承诺兼容 Claude API。作者可使用入口旁安装的 Node 包。
++
++## 验证
++
++确认全局基线没有 `/mods`。测试清单校验、显式加载、持久启用和禁用、清理、入口重载、名称冲突、钩子归属、失败回滚、存储并发和独立编写的模块。依次执行构建、类型检查和打包。在隔离终端中加载示例、重启、切换视图、重载修改后的代码并卸载。这些检查无需外部模型请求。原生钩子行为由针对性测试验证，不宣称进行了真实供应商调用。
++
++## 验收与待定事项
++
++第四个模块必须仅通过清单和入口添加命令及实时 UI。禁用并重启后应保持未加载。现有内置命令应正常工作。配套模块不能导入 CLI 内部实现。本 API 是面向本地使用的初始版本，分发方式和上游采纳仍待后续决定。
+diff --git a/docs/users/features/qwen-mods.md b/docs/users/features/qwen-mods.md
+new file mode 100644
+index 0000000..8e1a912
+--- /dev/null
++++ b/docs/users/features/qwen-mods.md
+@@ -0,0 +1,148 @@
++# Qwen Mods
++
++Qwen Mods is a local JavaScript extension runtime for the interactive Ink terminal. It is inspired by [Claude Code Mods](https://claude.dev/blog/getting-started-with-claude-code-mods/) and [Richard's Claude mods](https://github.com/richardcsuwandi/claude-mods). Personal mods and runnable examples are maintained separately in [richardcsuwandi/qwen-mods](https://github.com/richardcsuwandi/qwen-mods).
++
++## Run this fork
++
++From this repository, build and start the Ink CLI:
++
++```sh
++npm run build
++npm run bundle
++QWEN_TUI_RENDERER=ink node dist/cli.js
++```
++
++The local `qwen-mods` launcher, when installed, starts this same bundle from your current working directory. This feature is part of this fork. Installing the stock Qwen CLI does not install this runtime.
++
++## Load a mod
++
++```text
++/mods load /absolute/path/to/my-mod
++/mods list
++/mods reload my-mod
++/mods unload my-mod
++```
++
++Paths resolve from the current project directory. Absolute paths and quoted paths containing spaces work. Modules run as trusted Node.js code with your account's filesystem, network, process and environment access. Inspect code before loading it. This runtime has no sandbox.
++
++`load` runs a module for this CLI instance. `enable` loads it and remembers its absolute path for future Ink sessions. `unload` stops it now. `disable` also removes automatic startup loading. A failed startup mod is reported without stopping other mods.
++
++```text
++/mods enable /absolute/path/to/my-mod
++/mods disable my-mod
++```
++
++`--safe-mode` and `--bare` prevent module loading. Only explicit entries in the user registry load on startup. Repository settings and newly downloaded directories do not execute modules automatically. Registry and persistent data are under `$QWEN_HOME/mods`, or `~/.qwen/mods` by default. Enabled modules remain trusted when their files change, as with installed Node packages.
++
++Entry reload preserves transient API state and replaces commands, views, listeners, managed timers and hooks. Host HTTP and subprocess requests receive cancellation on unload. Reload refreshes the entry module, while Node caches its imported dependencies. Restart after editing dependencies. An async registration that never resolves can block management operations. Module authors should keep registration short and respect `api.signal` in their work.
++
++## Separate mod collection
++
++The [qwen-mods repository](https://github.com/richardcsuwandi/qwen-mods) contains `/ddl`, `/usage-bar`, `/context-bar`, and a hello starter. Clone that repository separately, then pass a module directory to `/mods load` or `/mods enable`. Its README covers setup, commands and compatibility.
++
++The runtime has no dependency on that collection and loads no personal modules by default. Authors may distribute modules from any directory or repository that follows the manifest and API contract.
++
++## Write a mod
++
++Create a directory containing `qwen-mod.json`:
++
++```json
++{
++  "id": "my-mod",
++  "name": "My mod",
++  "apiVersion": 1,
++  "entry": "./mod.mjs"
++}
++```
++
++The ID must start with a lowercase letter and contain only lowercase letters, digits or hyphens, with at most 64 characters. The JavaScript entry must be inside the mod directory. Use `.mjs`, or `.js` with an ESM package configuration. Compile TypeScript or JSX before loading. Other packages may be installed alongside the module, using normal Node resolution.
++
++Create `mod.mjs`:
++
++```js
++export function register(api) {
++  const { React, Text } = api.ui;
++
++  api.command('greet', 'Change the greeting', (args) => {
++    api.state.set('greeting', args || 'Hello');
++    return 'Greeting updated';
++  });
++
++  api.ui.slot('abovePrompt', function Greeting({ session, width }) {
++    return React.createElement(
++      Text,
++      { color: 'cyan', wrap: 'truncate-end' },
++      `${api.state.get('greeting', 'Hello')} · ${session.model}`,
++    );
++  });
++}
++```
++
++Load it with `/mods load /absolute/path/to/my-mod`. The host provides its own React and Ink instances. Use them to render components, including React hooks, instead of bundling a second React instance. Components receive current session data and available terminal width. Slots are hidden during dialogs and while the embedded shell has focus. Rendering errors show an error in that view. Reload the mod after fixing the component.
++
++## API version 1
++
++The complete TypeScript contract is [api.ts](../../../packages/cli/src/mods/api.ts).
++
++| API                                                  | Purpose                                                                                                                    |
++| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
++| `command(name, description, handler)`                | Register a local slash command. Return text or a promise of text. Commands do not invoke the model automatically.          |
++| `runCommand(name, args?)`                            | Submit an existing slash command through Qwen's normal dispatcher.                                                         |
++| `prompt(text)`                                       | Submit a model prompt through the normal input flow. This can use tokens.                                                  |
++| `on(event, callback)`                                | Observe `session.start`, `session.end`, `session.update`, `turn.start`, or `turn.end`.                                     |
++| `hook(event, callback, options?)`                    | Register a Qwen native function hook for this session.                                                                     |
++| `session.get()`                                      | Read session ID, model, cwd, busy state, token counts, context window and cost estimate.                                   |
++| `session.context()`                                  | Collect local context categories, reserve and estimate status.                                                             |
++| `state.get(key, fallback)` / `state.set(key, value)` | Keep transient values across entry reloads. Setting state rerenders views.                                                 |
++| `store.get` / `store.set` / `store.update`           | Read and atomically write JSON in a store namespaced by mod ID. Use synchronous `update` callbacks for concurrent changes. |
++| `ui.slot(slot, component)`                           | Register a React component in `abovePrompt`, `belowPrompt` or `footer`.                                                    |
++| `ui.React`, `ui.Box`, `ui.Text`, `ui.Button`         | Host React and terminal components. Button takes `label` and `onPress`.                                                    |
++| `ui.notify(text, level?)`                            | Append an info, warning or error message to the conversation display.                                                      |
++| `ui.invalidate()`                                    | Request a view refresh after changing module-owned state.                                                                  |
++| `timers.every(ms, callback)`                         | Register an interval of at least 100 ms, removed on unload.                                                                |
++| `http.fetch(url, options?)`                          | Fetch with unload cancellation and a default 30 second timeout when no caller signal is supplied.                          |
++| `process.run(file, args?, options?)`                 | Execute a program without a shell, with a default 30 second timeout and 1 MiB output cap.                                  |
++| `signal`                                             | Abort signal set when the module unloads.                                                                                  |
++| `experimental.config`                                | Access the owning Qwen Config. This is an unstable advanced escape hatch.                                                  |
++
++Registration functions return disposers where applicable. `register` can also return a cleanup function for resources the mod creates itself. The host cannot clean up arbitrary listeners, sockets or processes created directly through Node, so dispose them yourself. Trusted code can still crash or block the process.
++
++`session.start` fires when a mod loads and when the active session changes. `turn` events observe the interactive busy/idle transition. They are UI lifecycle events, not billing or provider events. Session state is a snapshot, and async work should compare its captured session ID or generation before updating UI. Runtime state persists across session changes, so reset session-specific values using `session.start` or the session ID.
++
++Command conflicts use Qwen's extension namespace behavior. For example, a mod named `my-mod` registering `help` becomes `/my-mod.help` when `/help` is occupied. Host command restrictions still apply. Mod submissions are rejected while a subagent tab, shell or dialog is active. Mod commands are user-invoked and are not exposed to the model as skills.
++
++### Prompt and tool hooks
++
++Mods use Qwen's existing function hook semantics, including its timeout and permission pipeline. For example, observe tool completion:
++
++```js
++export function register(api) {
++  api.hook('PostToolUse', async (input) => {
++    api.ui.notify(`Finished ${input.tool_name}`);
++  });
++}
++```
++
++Use `PreToolUse`, `UserPromptSubmit`, `PostCompact` and the other native event names when needed. Hook results can use Qwen's native `HookOutput` shape to block or modify supported operations. See the [hook types](../../../packages/core/src/hooks/types.ts). Hooks are bound to this runtime's current session and exclude subagent events. They are removed individually on unload and rebound when sessions change. A mod hook requires local hooks to be enabled. Managed hook dispatch is unsupported.
++
++### External and cloud services
++
++There is no Qwen Mods cloud service to provision. A mod can connect to your service using HTTP, Node SDKs or subprocesses. The host does not attach provider credentials automatically. Use credentials you configure for that service, such as an environment variable:
++
++```js
++export function register(api) {
++  api.command('service-health', 'Check my service', async () => {
++    const response = await api.http.fetch('https://example.com/health', {
++      headers: { Authorization: `Bearer ${process.env.MY_SERVICE_TOKEN}` },
++    });
++    if (!response.ok) throw new Error(`Service returned ${response.status}`);
++    return await response.text();
++  });
++}
++```
++
++## Current scope
++
++The runtime supports interactive Ink. Headless, ACP and OpenTUI do not load these modules. It provides named UI slots rather than replacing the whole renderer. There is no marketplace, automatic remote installer or Claude Mods API compatibility layer. Qwen remains open source, so authors can extend the runtime's API or rendering slots in their forks as well as create mods against this API.
++
++Runtime tests create temporary modules and do not require the companion collection. Run the companion repository's tests there with `npm test`.
+diff --git a/packages/cli/src/mods/ModsHost.test.tsx b/packages/cli/src/mods/ModsHost.test.tsx
+new file mode 100644
+index 0000000..1b4adb6
+--- /dev/null
++++ b/packages/cli/src/mods/ModsHost.test.tsx
+@@ -0,0 +1,147 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { render } from 'ink-testing-library';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import type { ModHost } from './runtime.js';
++import { ModsHost } from './ModsHost.js';
++
++const mocks = vi.hoisted(() => ({
++  config: {
++    getTargetDir: () => '/test',
++    getContentGeneratorConfig: () => ({ contextWindowSize: 200000 }),
++  },
++  settings: { merged: {} },
++  ui: {
++    sessionStats: {
++      metrics: { models: {} },
++      sessionId: 'main',
++      lastPromptTokenCount: 0,
++    },
++    currentModel: 'test',
++    streamingState: 'idle',
++    history: [],
++    isConfigInitialized: true,
++    shellModeActive: false,
++    dialogsVisible: false,
++    embeddedShellFocused: false,
++    commandContext: { ui: { addItem: vi.fn() } },
++  },
++  actions: { handleFinalSubmit: vi.fn(), reloadCommands: vi.fn() },
++  runtime: {
++    attach: vi.fn(),
++    updateSession: vi.fn(),
++    start: vi.fn(),
++    dispose: vi.fn(),
++  },
++}));
++
++vi.mock('./runtime.js', () => ({ getModRuntime: () => mocks.runtime }));
++vi.mock('../ui/contexts/ConfigContext.js', () => ({
++  useConfig: () => mocks.config,
++}));
++vi.mock('../ui/contexts/SettingsContext.js', () => ({
++  useSettings: () => mocks.settings,
++}));
++vi.mock('../ui/contexts/UIStateContext.js', () => ({
++  useUIState: () => mocks.ui,
++}));
++vi.mock('../ui/contexts/UIActionsContext.js', () => ({
++  useUIActions: () => mocks.actions,
++}));
++vi.mock('../ui/commands/contextCommand.js', () => ({
++  collectContextData: vi.fn(),
++}));
++vi.mock('../ui/hooks/useTerminalSize.js', () => ({
++  useTerminalSize: () => ({ rows: 40, columns: 100 }),
++}));
++vi.mock('../ui/context-menu/ContextMenuContext.js', () => ({
++  useContextMenu: () => ({ menu: null }),
++}));
++vi.mock('../ui/contexts/VirtualViewportContext.js', () => ({
++  useVirtualViewport: () => null,
++}));
++vi.mock('../ui/hooks/use-mouse-tracking-enabled.js', () => ({
++  useMouseTrackingEnabled: () => false,
++}));
++vi.mock('../ui/hooks/useMouseEvents.js', () => ({ useMouseEvents: vi.fn() }));
++
++describe('ModsHost submission ownership', () => {
++  let unmount: (() => void) | undefined;
++  const host = () => mocks.runtime.attach.mock.calls[0][0] as ModHost;
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    mocks.ui.isConfigInitialized = true;
++    mocks.ui.shellModeActive = false;
++    mocks.ui.dialogsVisible = false;
++    mocks.ui.embeddedShellFocused = false;
++  });
++
++  afterEach(() => {
++    unmount?.();
++  });
++
++  it('rejects submission while the user views a subagent', async () => {
++    const view = render(<ModsHost activeMainSession={false} />);
++    unmount = view.unmount;
++    await vi.waitFor(() => expect(mocks.runtime.attach).toHaveBeenCalledOnce());
++    expect(() => host().submit('/help')).toThrow('Return to the main session');
++    expect(mocks.actions.handleFinalSubmit).not.toHaveBeenCalled();
++  });
++
++  it('uses the current active view without reattaching the runtime', async () => {
++    const view = render(<ModsHost activeMainSession={true} />);
++    unmount = view.unmount;
++    await vi.waitFor(() => expect(mocks.runtime.attach).toHaveBeenCalledOnce());
++    const attached = host();
++    attached.submit('/help');
++    expect(mocks.actions.handleFinalSubmit).toHaveBeenLastCalledWith('/help');
++    view.rerender(<ModsHost activeMainSession={false} />);
++    await vi.waitFor(() =>
++      expect(() => attached.submit('blocked')).toThrow(
++        'Return to the main session',
++      ),
++    );
++    view.rerender(<ModsHost activeMainSession={true} />);
++    await vi.waitFor(() =>
++      expect(() => attached.submit('main prompt')).not.toThrow(),
++    );
++    expect(mocks.actions.handleFinalSubmit).toHaveBeenLastCalledWith(
++      'main prompt',
++    );
++    expect(mocks.runtime.attach).toHaveBeenCalledOnce();
++    expect(mocks.actions.handleFinalSubmit).not.toHaveBeenCalledWith('blocked');
++  });
++
++  it.each([
++    'shellModeActive',
++    'dialogsVisible',
++    'embeddedShellFocused',
++  ] as const)('blocks submission when %s becomes active', async (field) => {
++    const view = render(<ModsHost activeMainSession={true} />);
++    unmount = view.unmount;
++    await vi.waitFor(() => expect(mocks.runtime.attach).toHaveBeenCalledOnce());
++    mocks.ui = { ...mocks.ui, [field]: true };
++    view.rerender(<ModsHost activeMainSession={true} />);
++    await vi.waitFor(() =>
++      expect(() => host().submit('/help')).toThrow('shell or dialog'),
++    );
++    expect(mocks.actions.handleFinalSubmit).not.toHaveBeenCalled();
++  });
++
++  it('defers attachment until configuration is initialized', async () => {
++    mocks.ui.isConfigInitialized = false;
++    const view = render(<ModsHost activeMainSession={true} />);
++    unmount = view.unmount;
++    expect(mocks.runtime.attach).not.toHaveBeenCalled();
++    mocks.ui = { ...mocks.ui, isConfigInitialized: true };
++    view.rerender(<ModsHost activeMainSession={true} />);
++    await vi.waitFor(() => expect(mocks.runtime.attach).toHaveBeenCalledOnce());
++    host().submit('ready');
++    expect(mocks.actions.handleFinalSubmit).toHaveBeenCalledWith('ready');
++  });
++});
+diff --git a/packages/cli/src/mods/ModsHost.tsx b/packages/cli/src/mods/ModsHost.tsx
+new file mode 100644
+index 0000000..d107afd
+--- /dev/null
++++ b/packages/cli/src/mods/ModsHost.tsx
+@@ -0,0 +1,229 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import * as React from 'react';
++import { Box, Text, type DOMElement } from 'ink';
++import { useConfig } from '../ui/contexts/ConfigContext.js';
++import { useSettings } from '../ui/contexts/SettingsContext.js';
++import { useUIState } from '../ui/contexts/UIStateContext.js';
++import { useUIActions } from '../ui/contexts/UIActionsContext.js';
++import { useTerminalSize } from '../ui/hooks/useTerminalSize.js';
++import { useContextMenu } from '../ui/context-menu/ContextMenuContext.js';
++import { useVirtualViewport } from '../ui/contexts/VirtualViewportContext.js';
++import { useMouseTrackingEnabled } from '../ui/hooks/use-mouse-tracking-enabled.js';
++import { useMouseEvents } from '../ui/hooks/useMouseEvents.js';
++import { findElementAtMouseEvent } from '../ui/utils/mouse-hit.js';
++import { StreamingState } from '../ui/types.js';
++import { collectContextData } from '../ui/commands/contextCommand.js';
++import { calculateCost } from '../utils/costCalculator.js';
++import { getModRuntime } from './runtime.js';
++import type { ModSession, ModSlot } from './api.js';
++
++function ModButton({ label, onPress }: { label: string; onPress: () => void }) {
++  const ref = React.useRef<DOMElement>(null);
++  const { rows } = useTerminalSize();
++  const { menu } = useContextMenu();
++  const enabled = useMouseTrackingEnabled();
++  const viewport = useVirtualViewport();
++  useMouseEvents(
++    (event) => {
++      if (
++        event.name === 'left-press' &&
++        findElementAtMouseEvent(
++          ref.current,
++          [ref.current],
++          event,
++          rows,
++          'rect',
++        ) !== null
++      )
++        onPress();
++    },
++    { isActive: enabled && !!viewport && menu === null, tracking: 'button' },
++  );
++  return (
++    <Box ref={ref}>
++      <Text color="cyan">[{label}]</Text>
++    </Box>
++  );
++}
++
++export function ModsHost({
++  activeMainSession,
++}: {
++  activeMainSession: boolean;
++}) {
++  const config = useConfig();
++  const settings = useSettings();
++  const ui = useUIState();
++  const actions = useUIActions();
++  const runtime = getModRuntime(config);
++  const latest = React.useRef({ ui, actions, activeMainSession });
++  latest.current = { ui, actions, activeMainSession };
++  let inputTokens = 0;
++  let outputTokens = 0;
++  let cost = 0;
++  let priced = false;
++  let costIsPartial = false;
++  for (const [model, metrics] of Object.entries(
++    ui.sessionStats.metrics.models,
++  )) {
++    const input = metrics.tokens.prompt;
++    const output = metrics.tokens.candidates;
++    inputTokens += input;
++    outputTokens += output;
++    if (input <= 0 && output <= 0) continue;
++    const pricing = settings.merged.modelPricing?.[model];
++    const estimate = calculateCost({
++      inputTokens: input,
++      outputTokens: output,
++      pricing,
++    });
++    if (estimate !== null && Number.isFinite(estimate)) {
++      cost += estimate;
++      priced = true;
++    }
++    if (
++      estimate === null ||
++      (input > 0 && pricing?.inputPerMillionTokens == null) ||
++      (output > 0 && pricing?.outputPerMillionTokens == null)
++    )
++      costIsPartial = true;
++  }
++  const snapshot: ModSession = {
++    id: ui.sessionStats.sessionId,
++    model: ui.currentModel,
++    cwd: config.getTargetDir(),
++    busy: ui.streamingState !== StreamingState.Idle,
++    promptTokens: ui.sessionStats.lastPromptTokenCount,
++    contextWindow:
++      config.getContentGeneratorConfig()?.contextWindowSize ?? null,
++    inputTokens,
++    outputTokens,
++    cost: priced ? cost : null,
++    costIsPartial,
++    historyLength: ui.history.length,
++  };
++  const snapshotRef = React.useRef(snapshot);
++  snapshotRef.current = snapshot;
++
++  React.useEffect(() => {
++    if (!ui.isConfigInitialized) return;
++    runtime.attach({
++      ui: { React, Box, Text, Button: ModButton },
++      submit: (text) => {
++        if (!latest.current.activeMainSession)
++          throw new Error(
++            'Return to the main session before a mod submits a prompt or command',
++          );
++        const state = latest.current.ui;
++        if (
++          state.shellModeActive ||
++          state.dialogsVisible ||
++          state.embeddedShellFocused
++        )
++          throw new Error(
++            'Mod submission is unavailable while a shell or dialog is active',
++          );
++        latest.current.actions.handleFinalSubmit(text);
++      },
++      notify: (text, level) => {
++        latest.current.ui.commandContext.ui.addItem(
++          { type: level, text },
++          Date.now(),
++        );
++      },
++      commandsChanged: () => {
++        void latest.current.actions.reloadCommands();
++      },
++      context: async () => {
++        const data = await collectContextData(config, false);
++        const b = data.breakdown;
++        const categories = [
++          { name: 'System prompt', tokens: b.systemPrompt },
++          { name: 'Tools', tokens: b.builtinTools + b.mcpTools },
++          { name: 'Memory', tokens: b.memoryFiles },
++          { name: 'Skills', tokens: b.skills },
++          { name: 'Startup', tokens: b.startupContext ?? 0 },
++          { name: 'Messages', tokens: b.messages },
++          { name: 'Other', tokens: b.unattributed ?? 0 },
++        ];
++        return {
++          used: categories.reduce((sum, c) => sum + c.tokens, 0),
++          window: data.contextWindowSize,
++          estimated: data.isEstimated ?? false,
++          reserve: b.autocompactBuffer,
++          categories,
++        };
++      },
++    });
++    runtime.updateSession(snapshotRef.current);
++    void runtime.start();
++    return () => runtime.dispose();
++  }, [config, runtime, ui.isConfigInitialized]);
++
++  React.useEffect(() => {
++    if (ui.isConfigInitialized) runtime.updateSession(snapshotRef.current);
++  });
++  return null;
++}
++
++class ModViewBoundary extends React.Component<
++  { children: React.ReactNode },
++  { error: string | null }
++> {
++  override state = { error: null as string | null };
++  static getDerivedStateFromError(error: Error) {
++    return { error: error.message };
++  }
++  override render() {
++    return this.state.error ? (
++      <Text color="red">
++        Mod view failed: {this.state.error}. Reload the mod to retry.
++      </Text>
++    ) : (
++      this.props.children
++    );
++  }
++}
++
++export function ModsSlot({
++  slot,
++  availableWidth,
++}: {
++  slot: ModSlot;
++  availableWidth?: number;
++}) {
++  const runtime = getModRuntime(useConfig());
++  const ui = useUIState();
++  const { columns } = useTerminalSize();
++  React.useSyncExternalStore(runtime.subscribe, runtime.getRevision);
++  if (
++    !ui.isConfigInitialized ||
++    !ui.isInputActive ||
++    ui.embeddedShellFocused ||
++    ui.dialogsVisible
++  )
++    return null;
++  const views = runtime.getViews(slot);
++  if (!views.length) return null;
++  const width = Math.max(
++    1,
++    Math.min(
++      Math.min(columns, ui.mainAreaWidth || columns) - 4,
++      availableWidth ?? columns,
++    ),
++  );
++  return (
++    <Box flexDirection="column" paddingX={slot === 'footer' ? 0 : 2}>
++      {views.map(({ component: Component, key }) => (
++        <ModViewBoundary key={key}>
++          <Component session={runtime.getSession()} width={width} />
++        </ModViewBoundary>
++      ))}
++    </Box>
++  );
++}
+diff --git a/packages/cli/src/mods/api.ts b/packages/cli/src/mods/api.ts
+new file mode 100644
+index 0000000..a35cb65
+--- /dev/null
++++ b/packages/cli/src/mods/api.ts
+@@ -0,0 +1,132 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import type * as React from 'react';
++import type { Box, Text } from 'ink';
++import type { Config } from '@qwen-code/qwen-code-core';
++import type {
++  FunctionHookCallback,
++  HookEventName,
++} from '@qwen-code/qwen-code-core/hooks/types.js';
++
++export type Dispose = () => void;
++export type Json =
++  | null
++  | boolean
++  | number
++  | string
++  | Json[]
++  | { [key: string]: Json };
++export type ModEvent =
++  | 'session.start'
++  | 'session.end'
++  | 'session.update'
++  | 'turn.start'
++  | 'turn.end';
++export type ModSlot = 'abovePrompt' | 'belowPrompt' | 'footer';
++
++export interface ModSession {
++  id: string;
++  model: string;
++  cwd: string;
++  busy: boolean;
++  promptTokens: number;
++  contextWindow: number | null;
++  inputTokens: number;
++  outputTokens: number;
++  cost: number | null;
++  costIsPartial: boolean;
++  historyLength: number;
++}
++
++export interface ModContext {
++  used: number;
++  window: number;
++  estimated: boolean;
++  reserve: number;
++  categories: Array<{ name: string; tokens: number }>;
++}
++
++export interface ModViewProps {
++  session: Readonly<ModSession>;
++  width: number;
++}
++
++/** API version 1. Modules execute as trusted Node.js code, without a sandbox. */
++export interface QwenModAPI {
++  readonly version: 1;
++  readonly id: string;
++  readonly directory: string;
++  readonly signal: AbortSignal;
++  command(
++    name: string,
++    description: string,
++    handler: (args: string) => string | void | Promise<string | void>,
++  ): Dispose;
++  runCommand(name: string, args?: string): void;
++  prompt(text: string): void;
++  on(
++    event: ModEvent,
++    listener: (session: Readonly<ModSession>) => void | Promise<void>,
++  ): Dispose;
++  hook(
++    event: HookEventName | `${HookEventName}`,
++    callback: FunctionHookCallback,
++    options?: { matcher?: string; timeout?: number },
++  ): Dispose;
++  session: {
++    get(): Readonly<ModSession>;
++    context(): Promise<ModContext>;
++  };
++  state: {
++    get<T>(key: string, fallback: T): T;
++    set<T>(key: string, value: T): void;
++  };
++  store: {
++    get<T extends Json>(key: string, fallback: T): Promise<T>;
++    set(key: string, value: Json): Promise<void>;
++    update<T extends Json>(
++      key: string,
++      fallback: T,
++      change: (value: T) => T,
++    ): Promise<T>;
++  };
++  ui: {
++    React: typeof React;
++    Box: typeof Box;
++    Text: typeof Text;
++    Button: React.ComponentType<{ label: string; onPress: () => void }>;
++    slot(slot: ModSlot, component: React.ComponentType<ModViewProps>): Dispose;
++    notify(text: string, level?: 'info' | 'warning' | 'error'): void;
++    invalidate(): void;
++  };
++  timers: {
++    every(ms: number, callback: () => void | Promise<void>): Dispose;
++  };
++  http: {
++    fetch(url: string | URL, options?: RequestInit): Promise<Response>;
++  };
++  process: {
++    run(
++      file: string,
++      args?: string[],
++      options?: { cwd?: string; timeout?: number },
++    ): Promise<{ stdout: string; stderr: string }>;
++  };
++  /** Qwen internals may change independently of the versioned mod API. */
++  experimental: { config: Config };
++}
++
++export interface QwenModModule {
++  register(api: QwenModAPI): void | Dispose | Promise<void | Dispose>;
++}
++
++export interface ModManifest {
++  id: string;
++  name?: string;
++  apiVersion: 1;
++  entry: string;
++}
+diff --git a/packages/cli/src/mods/command-loader.test.ts b/packages/cli/src/mods/command-loader.test.ts
+new file mode 100644
+index 0000000..3a5eb3e
+--- /dev/null
++++ b/packages/cli/src/mods/command-loader.test.ts
+@@ -0,0 +1,108 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import type { Config } from '@qwen-code/qwen-code-core';
++import { CommandService } from '../services/CommandService.js';
++import {
++  CommandKind,
++  type CommandContext,
++  type SlashCommand,
++} from '../ui/commands/types.js';
++import { ModCommandLoader } from './command-loader.js';
++
++const mocks = vi.hoisted(() => ({ manage: vi.fn(), getCommands: vi.fn() }));
++vi.mock('./runtime.js', () => ({ getModRuntime: () => mocks }));
++vi.mock('@qwen-code/qwen-code-core', () => ({
++  createDebugLogger: () => ({ debug: vi.fn(), warn: vi.fn() }),
++}));
++
++describe('ModCommandLoader', () => {
++  const config = {} as Config;
++  const signal = new AbortController().signal;
++  const loader = new ModCommandLoader(config);
++
++  beforeEach(() => {
++    vi.clearAllMocks();
++    mocks.manage.mockResolvedValue('done');
++    mocks.getCommands.mockReturnValue([]);
++  });
++
++  it.each([
++    ['', 'list', ''],
++    [' list ', 'list', ''],
++    ['load /tmp/my mod', 'load', '/tmp/my mod'],
++    ['enable "/tmp/my mod"', 'enable', '/tmp/my mod'],
++    ["load '/tmp/my mod'", 'load', '/tmp/my mod'],
++    ['reload fourth-mod', 'reload', 'fourth-mod'],
++    ['disable fourth-mod', 'disable', 'fourth-mod'],
++  ])(
++    'parses %j into its lifecycle action and argument',
++    async (input, action, argument) => {
++      const [command] = await loader.loadCommands(signal);
++      expect(await command.action!({} as CommandContext, input)).toEqual({
++        type: 'message',
++        messageType: 'info',
++        content: 'done',
++      });
++      expect(mocks.manage).toHaveBeenCalledWith(action, argument);
++    },
++  );
++
++  it('returns runtime failures as local errors', async () => {
++    mocks.manage.mockRejectedValue(new Error('Unknown mods action: nope'));
++    const [command] = await loader.loadCommands(signal);
++    expect(await command.action!({} as CommandContext, 'nope id')).toEqual({
++      type: 'message',
++      messageType: 'error',
++      content: 'Unknown mods action: nope',
++    });
++  });
++
++  it('does not load without config or after abort', async () => {
++    expect(await new ModCommandLoader(null).loadCommands(signal)).toEqual([]);
++    expect(await loader.loadCommands(AbortSignal.abort())).toEqual([]);
++    expect(mocks.getCommands).not.toHaveBeenCalled();
++  });
++
++  it('preserves built-in commands and applies collision and disable rules', async () => {
++    const builtIn: SlashCommand = {
++      name: 'help',
++      description: 'Built-in help',
++      kind: CommandKind.BUILT_IN,
++      action: vi.fn(),
++    };
++    const mod: SlashCommand = {
++      name: 'help',
++      description: 'Mod help',
++      kind: CommandKind.BUILT_IN,
++      extensionName: 'fourth-mod',
++      supportedModes: ['interactive'],
++      modelInvocable: false,
++      action: vi.fn(),
++    };
++    mocks.getCommands.mockReturnValue([mod]);
++    const loaders = [{ loadCommands: async () => [builtIn] }, loader];
++    const service = await CommandService.create(loaders, signal);
++    expect(service.getCommands().map(({ name }) => name)).toEqual([
++      'help',
++      'mods',
++      'fourth-mod.help',
++    ]);
++    expect(service.getCommands()[0].action).toBe(builtIn.action);
++    expect(service.getCommands()[2].action).toBe(mod.action);
++    expect(service.getModelInvocableCommands()).toEqual([]);
++    expect(
++      service.getCommandsForMode('non_interactive').map(({ name }) => name),
++    ).not.toContain('mods');
++    const disabled = await CommandService.create(
++      loaders,
++      signal,
++      new Set([' MODS ', 'FOURTH-MOD.HELP']),
++    );
++    expect(disabled.getCommands().map(({ name }) => name)).toEqual(['help']);
++  });
++});
+diff --git a/packages/cli/src/mods/command-loader.ts b/packages/cli/src/mods/command-loader.ts
+new file mode 100644
+index 0000000..6ea790c
+--- /dev/null
++++ b/packages/cli/src/mods/command-loader.ts
+@@ -0,0 +1,51 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import type { Config } from '@qwen-code/qwen-code-core';
++import { CommandKind, type SlashCommand } from '../ui/commands/types.js';
++import type { ICommandLoader } from '../services/types.js';
++import { getModRuntime } from './runtime.js';
++
++export class ModCommandLoader implements ICommandLoader {
++  constructor(private readonly config: Config | null) {}
++  async loadCommands(signal: AbortSignal): Promise<SlashCommand[]> {
++    if (!this.config || signal.aborted) return [];
++    const runtime = getModRuntime(this.config);
++    return [
++      {
++        name: 'mods',
++        description: 'Load, enable, reload or disable trusted JavaScript mods',
++        kind: CommandKind.BUILT_IN,
++        supportedModes: ['interactive'],
++        modelInvocable: false,
++        action: async (_context, args) => {
++          const match = args.trim().match(/^(\S+)(?:\s+([\s\S]+))?$/);
++          const action = match?.[1] ?? 'list';
++          let argument = match?.[2] ?? '';
++          if (
++            (argument.startsWith('"') && argument.endsWith('"')) ||
++            (argument.startsWith("'") && argument.endsWith("'"))
++          )
++            argument = argument.slice(1, -1);
++          try {
++            return {
++              type: 'message',
++              messageType: 'info',
++              content: await runtime.manage(action, argument),
++            };
++          } catch (error) {
++            return {
++              type: 'message',
++              messageType: 'error',
++              content: error instanceof Error ? error.message : String(error),
++            };
++          }
++        },
++      },
++      ...runtime.getCommands(),
++    ];
++  }
++}
+diff --git a/packages/cli/src/mods/json-store.test.ts b/packages/cli/src/mods/json-store.test.ts
+new file mode 100644
+index 0000000..bf7ba75
+--- /dev/null
++++ b/packages/cli/src/mods/json-store.test.ts
+@@ -0,0 +1,80 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
++import os from 'node:os';
++import path from 'node:path';
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { JsonStore } from './json-store.js';
++
++describe('JsonStore', () => {
++  let directory: string;
++  let file: string;
++  let store: JsonStore;
++
++  beforeEach(async () => {
++    directory = await mkdtemp(path.join(os.tmpdir(), 'qwen-mod-store-'));
++    file = path.join(directory, 'data.json');
++    store = new JsonStore(file);
++  });
++
++  afterEach(async () => {
++    await rm(directory, { recursive: true, force: true });
++  });
++
++  it('uses defaults only for absent keys and survives a new instance', async () => {
++    expect(await store.get('missing', 7)).toBe(7);
++    await store.set('false', false);
++    await store.set('null', null);
++    await store.set('nested', { values: [0, 'value'] });
++    const restarted = new JsonStore(file);
++    expect(await restarted.get('false', true)).toBe(false);
++    expect(await restarted.get('null', 7)).toBeNull();
++    expect(await restarted.get('nested', {})).toEqual({ values: [0, 'value'] });
++  });
++
++  it('does not lose parallel updates from separate instances', async () => {
++    await Promise.all(
++      Array.from({ length: 8 }, () =>
++        new JsonStore(file).update<number>('count', 0, (value) => value + 1),
++      ),
++    );
++    expect(await store.get('count', 0)).toBe(8);
++    expect(await readdir(directory)).toEqual(['data.json']);
++  });
++
++  it.each(['{bad json', '[]', 'null', '42', '"text"'])(
++    'preserves malformed store %s',
++    async (content) => {
++      await writeFile(file, content);
++      await expect(store.get('key', 0)).rejects.toThrow();
++      await expect(store.set('key', 1)).rejects.toThrow();
++      expect(await readFile(file, 'utf8')).toBe(content);
++      expect(await readdir(directory)).toEqual(['data.json']);
++    },
++  );
++
++  it('keeps the old file and releases the lock when an updater throws', async () => {
++    await store.set('count', 2);
++    const original = await readFile(file, 'utf8');
++    await expect(
++      store.update('count', 0, () => {
++        throw new Error('updater failed');
++      }),
++    ).rejects.toThrow('updater failed');
++    expect(await readFile(file, 'utf8')).toBe(original);
++    await store.update<number>('count', 0, (value) => value + 1);
++    expect(await store.get('count', 0)).toBe(3);
++  });
++
++  it('stores prototype-looking names as own JSON keys', async () => {
++    await store.set('__proto__', { safe: true });
++    await store.set('constructor', 1);
++    expect(await store.get('__proto__', null)).toEqual({ safe: true });
++    expect(await store.get('constructor', null)).toBe(1);
++    expect(Object.prototype).not.toHaveProperty('safe');
++  });
++});
+diff --git a/packages/cli/src/mods/json-store.ts b/packages/cli/src/mods/json-store.ts
+new file mode 100644
+index 0000000..b0d1eb6
+--- /dev/null
++++ b/packages/cli/src/mods/json-store.ts
+@@ -0,0 +1,68 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
++import path from 'node:path';
++import { randomUUID } from 'node:crypto';
++import lockfile from 'proper-lockfile';
++import type { Json } from './api.js';
++
++export class JsonStore {
++  constructor(private readonly file: string) {}
++
++  private async read(): Promise<Record<string, Json>> {
++    try {
++      const data: unknown = JSON.parse(await readFile(this.file, 'utf8'));
++      if (!data || typeof data !== 'object' || Array.isArray(data))
++        throw new Error(`Invalid mod store: ${this.file}`);
++      return data as Record<string, Json>;
++    } catch (error) {
++      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
++      throw error;
++    }
++  }
++
++  async get<T extends Json>(key: string, fallback: T): Promise<T> {
++    const data = await this.read();
++    return Object.hasOwn(data, key) ? (data[key] as T) : fallback;
++  }
++
++  async set(key: string, value: Json): Promise<void> {
++    await this.update(key, null, () => value);
++  }
++
++  async update<T extends Json>(
++    key: string,
++    fallback: T,
++    change: (value: T) => T,
++  ): Promise<T> {
++    await mkdir(path.dirname(this.file), { recursive: true });
++    const release = await lockfile.lock(this.file, {
++      realpath: false,
++      retries: { retries: 20, minTimeout: 10, maxTimeout: 100 },
++    });
++    const temporary = `${this.file}.${randomUUID()}.tmp`;
++    try {
++      const data = await this.read();
++      const value = change(
++        Object.hasOwn(data, key) ? (data[key] as T) : fallback,
++      );
++      Object.defineProperty(data, key, {
++        value,
++        enumerable: true,
++        configurable: true,
++      });
++      await writeFile(temporary, JSON.stringify(data, null, 2), {
++        mode: 0o600,
++      });
++      await rename(temporary, this.file);
++      return value;
++    } finally {
++      await unlink(temporary).catch(() => undefined);
++      await release();
++    }
++  }
++}
+diff --git a/packages/cli/src/mods/runtime.test.ts b/packages/cli/src/mods/runtime.test.ts
+new file mode 100644
+index 0000000..626d856
+--- /dev/null
++++ b/packages/cli/src/mods/runtime.test.ts
+@@ -0,0 +1,442 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
++import os from 'node:os';
++import path from 'node:path';
++import * as React from 'react';
++import { Box, Text } from 'ink';
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import type { Config } from '@qwen-code/qwen-code-core';
++import {
++  HookEventName,
++  type FunctionHookCallback,
++  type HookInput,
++} from '@qwen-code/qwen-code-core/hooks/types.js';
++import type { CommandContext } from '../ui/commands/types.js';
++import type { ModSession } from './api.js';
++import { ModRuntime, type ModHost } from './runtime.js';
++
++describe('ModRuntime with external modules', () => {
++  let directory: string;
++  let registry: string;
++  let runtime: ModRuntime;
++  let host: ModHost;
++  let config: Config;
++  let sessionId: string;
++  let hooks: {
++    isManaged: ReturnType<typeof vi.fn>;
++    addFunctionHook: ReturnType<typeof vi.fn>;
++    removeFunctionHook: ReturnType<typeof vi.fn>;
++  };
++  const snapshot = (id: string): ModSession => ({
++    id,
++    model: 'test-model',
++    cwd: '/test',
++    busy: false,
++    promptTokens: 0,
++    contextWindow: 200000,
++    inputTokens: 0,
++    outputTokens: 0,
++    cost: null,
++    costIsPartial: false,
++    historyLength: 0,
++  });
++
++  function createRuntime() {
++    const instance = new ModRuntime(config, registry);
++    instance.attach(host);
++    instance.updateSession(snapshot(sessionId));
++    return instance;
++  }
++
++  async function moduleFixture(
++    source: string,
++    manifest: unknown = {
++      id: 'fourth-mod',
++      apiVersion: 1,
++      entry: 'index.mjs',
++    },
++  ) {
++    const mod = path.join(directory, 'external');
++    await mkdir(mod, { recursive: true });
++    await writeFile(path.join(mod, 'qwen-mod.json'), JSON.stringify(manifest));
++    await writeFile(path.join(mod, 'index.mjs'), source);
++    return mod;
++  }
++
++  async function command(name: string, args = '') {
++    const entry = runtime.getCommands().find((item) => item.name === name);
++    expect(entry).toBeDefined();
++    return entry!.action!({} as CommandContext, args);
++  }
++
++  beforeEach(async () => {
++    directory = await mkdtemp(path.join(os.tmpdir(), 'qwen-mod-runtime-'));
++    registry = path.join(directory, 'registry');
++    sessionId = 'session-one';
++    let nextHook = 0;
++    hooks = {
++      isManaged: vi.fn(() => false),
++      addFunctionHook: vi.fn(() => `hook-${nextHook++}`),
++      removeFunctionHook: vi.fn(),
++    };
++    config = {
++      getTargetDir: () => directory,
++      getSessionId: () => sessionId,
++      getHookSystem: () => hooks,
++      getDisableAllHooks: () => false,
++      isSafeMode: () => false,
++      getBareMode: () => false,
++    } as unknown as Config;
++    host = {
++      ui: { React, Box, Text, Button: () => null },
++      submit: vi.fn(),
++      notify: vi.fn(),
++      commandsChanged: vi.fn(),
++      context: vi.fn(async () => ({
++        used: 10,
++        window: 200000,
++        estimated: true,
++        reserve: 1000,
++        categories: [],
++      })),
++    };
++    runtime = createRuntime();
++  });
++
++  afterEach(async () => {
++    runtime.dispose();
++    vi.useRealTimers();
++    vi.unstubAllGlobals();
++    await rm(directory, { recursive: true, force: true });
++  });
++
++  it('loads a standalone command and host React view without implementation imports', async () => {
++    const mod = await moduleFixture(`
++      export function register(api) {
++        api.command('fourth', 'Independent command', args => 'hello ' + args);
++        api.ui.slot('abovePrompt', props => api.ui.React.createElement(
++          api.ui.Text, null, 'fourth ' + props.session.model));
++      }
++    `);
++    await runtime.manage('load', mod);
++    expect(await command('fourth', 'world')).toEqual({
++      type: 'message',
++      messageType: 'info',
++      content: 'hello world',
++    });
++    const view = runtime.getViews('abovePrompt')[0];
++    const component = view.component as (props: {
++      session: ModSession;
++      width: number;
++    }) => React.ReactElement;
++    const element = component({ session: snapshot(sessionId), width: 80 });
++    expect(element.type).toBe(Text);
++    expect(element.props).toEqual({ children: 'fourth test-model' });
++    expect(await runtime.manage('list')).toBe('fourth-mod: loaded');
++    expect(host.submit).not.toHaveBeenCalled();
++  });
++
++  it('unloads commands, views and timers and signals abort before cleanup', async () => {
++    const mod = await moduleFixture(`
++      export function register(api) {
++        api.command('fourth', 'Test', () => 'ok');
++        api.ui.slot('footer', () => null);
++        api.timers.every(100, () => api.ui.notify('tick'));
++        const notify = api.ui.notify;
++        const host = api.experimental.config;
++        api.signal.addEventListener('abort', () => host.aborted());
++        return () => host.cleaned(api.signal.aborted);
++      }
++    `);
++    const aborted = vi.fn();
++    const cleaned = vi.fn();
++    Object.assign(config, { aborted, cleaned });
++    vi.useFakeTimers();
++    await runtime.manage('load', mod);
++    await vi.advanceTimersByTimeAsync(250);
++    expect(host.notify).toHaveBeenCalledTimes(2);
++    await runtime.manage('unload', 'fourth-mod');
++    await vi.advanceTimersByTimeAsync(500);
++    expect(host.notify).toHaveBeenCalledTimes(2);
++    expect(aborted).toHaveBeenCalledOnce();
++    expect(cleaned).toHaveBeenCalledWith(true);
++    expect(runtime.getCommands()).toEqual([]);
++    expect(runtime.getViews('footer')).toEqual([]);
++  });
++
++  it('aborts an outstanding host HTTP request when unloaded', async () => {
++    let requestSignal: AbortSignal | undefined;
++    vi.stubGlobal(
++      'fetch',
++      vi.fn((_url: string, options: RequestInit) => {
++        requestSignal = options.signal!;
++        return new Promise((_resolve, reject) => {
++          requestSignal!.addEventListener('abort', () =>
++            reject(new Error('aborted')),
++          );
++        });
++      }),
++    );
++    const mod = await moduleFixture(`export function register(api) {
++      api.command('request', 'Test', async () => {
++        await api.http.fetch('https://example.invalid'); return 'done';
++      });
++    }`);
++    await runtime.manage('load', mod);
++    const pending = command('request');
++    expect(requestSignal?.aborted).toBe(false);
++    await runtime.manage('unload', 'fourth-mod');
++    expect(requestSignal?.aborted).toBe(true);
++    expect(await pending).toBeUndefined();
++  });
++
++  it('reloads edited entry code while preserving session state', async () => {
++    const source = (version: string) => `export function register(api) {
++      api.state.set('count', api.state.get('count', 0) + 1);
++      api.command('fourth', 'Test', () => '${version}:' + api.state.get('count', 0));
++      api.ui.slot('footer', () => null);
++    }`;
++    const mod = await moduleFixture(source('v1'));
++    await runtime.manage('load', mod);
++    expect(await command('fourth')).toMatchObject({ content: 'v1:1' });
++    await writeFile(path.join(mod, 'index.mjs'), source('v2'));
++    await runtime.manage('reload', 'fourth-mod');
++    expect(await command('fourth')).toMatchObject({ content: 'v2:2' });
++    expect(runtime.getCommands()).toHaveLength(1);
++    expect(runtime.getViews('footer')).toHaveLength(1);
++  });
++
++  it('rolls back partially registered resources after an exception', async () => {
++    const mod = await moduleFixture(`export function register(api) {
++      api.command('fourth', 'Test', () => 'bad');
++      api.ui.slot('footer', () => null);
++      api.hook('PreToolUse', async () => undefined);
++      api.timers.every(100, () => api.ui.notify('leaked timer'));
++      throw new Error('registration failed');
++    }`);
++    vi.useFakeTimers();
++    await expect(runtime.manage('load', mod)).rejects.toThrow(
++      'registration failed',
++    );
++    expect(runtime.getCommands()).toEqual([]);
++    expect(runtime.getViews('footer')).toEqual([]);
++    expect(hooks.removeFunctionHook).toHaveBeenCalledOnce();
++    await vi.advanceTimersByTimeAsync(500);
++    expect(host.notify).not.toHaveBeenCalled();
++  });
++
++  it('loads enabled modules on restart and keeps disabled modules unloaded', async () => {
++    const mod = await moduleFixture(`export async function register(api) {
++      const count = await api.store.update('starts', 0, n => n + 1);
++      api.command('fourth', 'Test', () => String(count));
++    }`);
++    await runtime.manage('enable', mod);
++    expect(await command('fourth')).toMatchObject({ content: '1' });
++    runtime.dispose();
++    runtime = createRuntime();
++    await runtime.start();
++    expect(await command('fourth')).toMatchObject({ content: '2' });
++    await runtime.manage('disable', 'fourth-mod');
++    runtime.dispose();
++    runtime = createRuntime();
++    await runtime.start();
++    expect(runtime.getCommands()).toEqual([]);
++    expect(
++      JSON.parse(
++        await readFile(path.join(registry, 'data', 'fourth-mod.json'), 'utf8'),
++      ),
++    ).toEqual({ starts: 2 });
++  });
++
++  it('does not auto-load a module loaded only for one session', async () => {
++    const mod = await moduleFixture(`export function register(api) {
++      api.command('fourth', 'Test', () => 'ok');
++    }`);
++    await runtime.manage('load', mod);
++    runtime.dispose();
++    runtime = createRuntime();
++    await runtime.start();
++    expect(runtime.getCommands()).toEqual([]);
++  });
++
++  it.each([
++    null,
++    { id: '../escape', apiVersion: 1, entry: 'index.mjs' },
++    { id: 'fourth-mod', apiVersion: 2, entry: 'index.mjs' },
++    { id: 'fourth-mod', apiVersion: 1 },
++  ])('rejects malformed manifest %j', async (manifest) => {
++    const mod = await moduleFixture('export function register() {}', manifest);
++    await expect(runtime.manage('load', mod)).rejects.toThrow(
++      'Invalid qwen-mod.json',
++    );
++    expect(runtime.getCommands()).toEqual([]);
++  });
++
++  it('rejects an entry escaping its module directory', async () => {
++    await writeFile(
++      path.join(directory, 'outside.mjs'),
++      'export function register() {}',
++    );
++    const mod = await moduleFixture('', {
++      id: 'fourth-mod',
++      apiVersion: 1,
++      entry: '../outside.mjs',
++    });
++    await expect(runtime.manage('load', mod)).rejects.toThrow(
++      'inside its directory',
++    );
++  });
++
++  it('reports corrupt enabled registry without loading code or changing the file', async () => {
++    await mkdir(registry);
++    const file = path.join(registry, 'enabled.json');
++    const contents = '{"entries":{"fourth-mod":"relative/path"}}';
++    await writeFile(file, contents);
++    await runtime.start();
++    expect(host.notify).toHaveBeenCalledWith(
++      expect.stringContaining('Invalid enabled mods registry'),
++      'error',
++    );
++    expect(await readFile(file, 'utf8')).toBe(contents);
++    expect(runtime.getCommands()).toEqual([]);
++  });
++
++  it('filters foreign and subagent hook events, rebinds, and removes owned hooks', async () => {
++    const mod = await moduleFixture(`export function register(api) {
++      api.hook('PreToolUse', async () => { api.ui.notify('hook called'); return true; });
++    }`);
++    await runtime.manage('load', mod);
++    const firstCall = hooks.addFunctionHook.mock.calls[0];
++    const first = firstCall[3] as FunctionHookCallback;
++    const input: HookInput = {
++      session_id: sessionId,
++      transcript_path: '',
++      cwd: directory,
++      hook_event_name: 'PreToolUse',
++      timestamp: new Date().toISOString(),
++    };
++    expect(await first(input)).toBe(true);
++    expect(await first({ ...input, session_id: 'foreign' })).toBeUndefined();
++    expect(await first({ ...input, agent_id: 'child' })).toBeUndefined();
++    expect(host.notify).toHaveBeenCalledTimes(1);
++    sessionId = 'session-two';
++    runtime.updateSession(snapshot(sessionId));
++    expect(hooks.removeFunctionHook).toHaveBeenCalledWith(
++      'session-one',
++      HookEventName.PreToolUse,
++      'hook-0',
++    );
++    expect(await first(input)).toBeUndefined();
++    const second = hooks.addFunctionHook.mock
++      .calls[1][3] as FunctionHookCallback;
++    expect(await second({ ...input, session_id: sessionId })).toBe(true);
++    await runtime.manage('unload', 'fourth-mod');
++    expect(hooks.removeFunctionHook).toHaveBeenCalledWith(
++      'session-two',
++      HookEventName.PreToolUse,
++      'hook-1',
++    );
++    expect(await second({ ...input, session_id: sessionId })).toBeUndefined();
++    expect(host.notify).toHaveBeenCalledTimes(2);
++  });
++
++  it('rejects native hooks under managed dispatch with registration rollback', async () => {
++    hooks.isManaged.mockReturnValue(true);
++    const mod = await moduleFixture(`export function register(api) {
++      api.command('fourth', 'Test', () => 'ok');
++      api.hook('PreToolUse', async () => undefined);
++    }`);
++    await expect(runtime.manage('load', mod)).rejects.toThrow(
++      'local Qwen hooks',
++    );
++    expect(runtime.getCommands()).toEqual([]);
++    expect(hooks.addFunctionHook).not.toHaveBeenCalled();
++  });
++
++  it('does not bind hooks when all hooks are disabled', async () => {
++    Object.assign(config, { getDisableAllHooks: () => true });
++    const mod = await moduleFixture(`export function register(api) {
++      api.hook('PreToolUse', async () => undefined);
++    }`);
++    await expect(runtime.manage('load', mod)).rejects.toThrow(
++      'local Qwen hooks',
++    );
++    expect(hooks.addFunctionHook).not.toHaveBeenCalled();
++  });
++
++  it('delivers session and turn lifecycle events, including disposal', async () => {
++    const mod = await moduleFixture(`export function register(api) {
++      for (const event of ['session.start', 'session.end', 'turn.start', 'turn.end']) {
++        api.on(event, session => api.ui.notify(event + ':' + session.id));
++      }
++    }`);
++    await runtime.manage('load', mod);
++    runtime.updateSession({ ...snapshot(sessionId), busy: true });
++    runtime.updateSession(snapshot(sessionId));
++    sessionId = 'session-two';
++    runtime.updateSession(snapshot(sessionId));
++    runtime.dispose();
++    expect(vi.mocked(host.notify).mock.calls.map(([text]) => text)).toEqual([
++      'session.start:session-one',
++      'turn.start:session-one',
++      'turn.end:session-one',
++      'session.end:session-one',
++      'session.start:session-two',
++      'session.end:session-two',
++    ]);
++  });
++
++  it('refuses registry mutations when enabled entries are malformed', async () => {
++    const mod = await moduleFixture('export function register() {}');
++    await mkdir(registry);
++    const file = path.join(registry, 'enabled.json');
++    const contents = '{"entries": ["invalid"]}';
++    await writeFile(file, contents);
++    await expect(runtime.manage('enable', mod)).rejects.toThrow(
++      'Invalid enabled mods registry',
++    );
++    expect(runtime.getCommands()).toEqual([]);
++    await expect(runtime.manage('disable', 'fourth-mod')).rejects.toThrow(
++      'Invalid enabled mods registry',
++    );
++    expect(await readFile(file, 'utf8')).toBe(contents);
++  });
++
++  it('recovers command execution after a module handler throws', async () => {
++    const mod = await moduleFixture(`export function register(api) {
++      api.command('fourth', 'Test', args => {
++        if (args === 'fail') throw new Error('handler failed');
++        return 'still active';
++      });
++    }`);
++    await runtime.manage('load', mod);
++    expect(await command('fourth', 'fail')).toMatchObject({
++      type: 'message',
++      messageType: 'error',
++      content: 'Mod fourth-mod: handler failed',
++    });
++    expect(await command('fourth')).toMatchObject({ content: 'still active' });
++  });
++
++  it.each(['isSafeMode', 'getBareMode'] as const)(
++    'skips enabled modules and refuses explicit loading when %s is active',
++    async (flag) => {
++      const mod = await moduleFixture(`export function register(api) {
++        api.command('fourth', 'Test', () => 'loaded');
++      }`);
++      await runtime.manage('enable', mod);
++      runtime.dispose();
++      Object.assign(config, { [flag]: () => true });
++      runtime = createRuntime();
++      await runtime.start();
++      expect(runtime.getCommands()).toEqual([]);
++      await expect(runtime.manage('load', mod)).rejects.toThrow();
++      expect(runtime.getCommands()).toEqual([]);
++    },
++  );
++});
+diff --git a/packages/cli/src/mods/runtime.ts b/packages/cli/src/mods/runtime.ts
+new file mode 100644
+index 0000000..4367042
+--- /dev/null
++++ b/packages/cli/src/mods/runtime.ts
+@@ -0,0 +1,637 @@
++/**
++ * @license
++ * Copyright 2026 Qwen
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { readFile, realpath } from 'node:fs/promises';
++import path from 'node:path';
++import { pathToFileURL } from 'node:url';
++import { randomUUID } from 'node:crypto';
++import { execFile } from 'node:child_process';
++import type { ComponentType } from 'react';
++import type { Config } from '@qwen-code/qwen-code-core';
++import { Storage } from '@qwen-code/qwen-code-core/config/storage.js';
++import { HookEventName } from '@qwen-code/qwen-code-core/hooks/types.js';
++import type { FunctionHookCallback } from '@qwen-code/qwen-code-core/hooks/types.js';
++import { CommandKind, type SlashCommand } from '../ui/commands/types.js';
++import type {
++  Dispose,
++  ModEvent,
++  ModManifest,
++  ModSession,
++  ModSlot,
++  ModViewProps,
++  QwenModAPI,
++  QwenModModule,
++} from './api.js';
++import { JsonStore } from './json-store.js';
++
++interface ModRecord {
++  manifest: ModManifest;
++  directory: string;
++  abort: AbortController;
++  cleanups: Set<Dispose>;
++  commands: SlashCommand[];
++  views: Array<{
++    slot: ModSlot;
++    component: ComponentType<ModViewProps>;
++    key: string;
++  }>;
++  listeners: Map<
++    ModEvent,
++    Set<(session: Readonly<ModSession>) => void | Promise<void>>
++  >;
++  hooks: Array<{
++    event: HookEventName;
++    callback: FunctionHookCallback;
++    matcher: string;
++    timeout?: number;
++    remove?: Dispose;
++  }>;
++}
++
++export interface ModHost {
++  ui: Pick<QwenModAPI['ui'], 'React' | 'Box' | 'Text' | 'Button'>;
++  submit(text: string): void;
++  notify(text: string, level: 'info' | 'warning' | 'error'): void;
++  context: QwenModAPI['session']['context'];
++  commandsChanged(): void;
++}
++
++export class ModRuntime {
++  private records = new Map<string, ModRecord>();
++  private states = new Map<string, Map<string, unknown>>();
++  private subscribers = new Set<() => void>();
++  private revision = 0;
++  private host?: ModHost;
++  private snapshot?: Readonly<ModSession>;
++  private queue: Promise<unknown> = Promise.resolve();
++  private readonly registry: JsonStore;
++  private disposed = false;
++
++  constructor(
++    readonly config: Config,
++    private readonly root = path.join(Storage.getGlobalQwenDir(), 'mods'),
++  ) {
++    this.registry = new JsonStore(path.join(root, 'enabled.json'));
++  }
++
++  subscribe = (callback: () => void): Dispose => {
++    this.subscribers.add(callback);
++    return () => {
++      this.subscribers.delete(callback);
++    };
++  };
++  getRevision = (): number => this.revision;
++  invalidate = (): void => {
++    this.revision++;
++    this.subscribers.forEach((callback) => callback());
++  };
++
++  attach(host: ModHost): void {
++    this.host = host;
++    this.disposed = false;
++  }
++
++  private report(id: string, error: unknown): void {
++    this.host?.notify(
++      `Mod ${id}: ${error instanceof Error ? error.message : String(error)}`,
++      'error',
++    );
++  }
++
++  private invoke(
++    record: ModRecord,
++    callback: () => void | Promise<void>,
++  ): void {
++    if (record.abort.signal.aborted) return;
++    try {
++      void Promise.resolve(callback()).catch((error: unknown) => {
++        if (!record.abort.signal.aborted)
++          this.report(record.manifest.id, error);
++      });
++    } catch (error) {
++      this.report(record.manifest.id, error);
++    }
++  }
++
++  private emit(
++    record: ModRecord,
++    event: ModEvent,
++    snapshot: Readonly<ModSession>,
++  ): void {
++    record.listeners
++      .get(event)
++      ?.forEach((callback) => this.invoke(record, () => callback(snapshot)));
++  }
++
++  updateSession(snapshot: ModSession): void {
++    const previous = this.snapshot;
++    if (previous && JSON.stringify(previous) === JSON.stringify(snapshot))
++      return;
++    this.snapshot = Object.freeze({ ...snapshot });
++    for (const record of this.records.values()) {
++      if (previous?.id !== snapshot.id) {
++        if (previous) this.emit(record, 'session.end', previous);
++        this.bindHooks(record);
++        this.emit(record, 'session.start', this.snapshot);
++      }
++      if (previous?.id === snapshot.id && previous.busy !== snapshot.busy)
++        this.emit(
++          record,
++          snapshot.busy ? 'turn.start' : 'turn.end',
++          this.snapshot,
++        );
++      this.emit(record, 'session.update', this.snapshot);
++    }
++    this.invalidate();
++  }
++
++  getSession(): Readonly<ModSession> {
++    if (!this.snapshot) throw new Error('Mod session is not ready');
++    return this.snapshot;
++  }
++
++  getViews(slot: ModSlot) {
++    return [...this.records.values()].flatMap((r) =>
++      r.views.filter((v) => v.slot === slot),
++    );
++  }
++
++  getCommands(): SlashCommand[] {
++    return [...this.records.values()].flatMap((record) => record.commands);
++  }
++
++  private bindHooks(record: ModRecord): void {
++    const system = this.config.getHookSystem();
++    const session = this.config.getSessionId();
++    for (const hook of record.hooks) {
++      hook.remove?.();
++      hook.remove = undefined;
++      if (!system || system.isManaged()) continue;
++      const id = system.addFunctionHook(
++        session,
++        hook.event,
++        hook.matcher,
++        async (input, context) => {
++          if (
++            record.abort.signal.aborted ||
++            this.config.getSessionId() !== session ||
++            input.session_id !== session ||
++            input.agent_id
++          )
++            return undefined;
++          return hook.callback(input, context);
++        },
++        `Mod ${record.manifest.id} hook failed`,
++        { name: record.manifest.id, timeout: hook.timeout ?? 10_000 },
++      );
++      hook.remove = () => {
++        system.removeFunctionHook(session, hook.event, id);
++      };
++    }
++  }
++
++  private api(record: ModRecord): QwenModAPI {
++    const host = this.host!;
++    const id = record.manifest.id;
++    const signal = record.abort.signal;
++    const assertActive = () => {
++      if (signal.aborted) throw new Error(`Mod ${id} is unloaded`);
++    };
++    const track = (cleanup: Dispose): Dispose => {
++      record.cleanups.add(cleanup);
++      return () => {
++        if (record.cleanups.delete(cleanup)) cleanup();
++      };
++    };
++    let state = this.states.get(id);
++    if (!state) {
++      state = new Map();
++      this.states.set(id, state);
++    }
++    const store = new JsonStore(path.join(this.root, 'data', `${id}.json`));
++    return {
++      version: 1,
++      id,
++      directory: record.directory,
++      signal,
++      command: (name, description, handler) => {
++        assertActive();
++        if (
++          !/^[a-z][a-z0-9-]{0,63}$/.test(name) ||
++          record.commands.some((c) => c.name === name)
++        )
++          throw new Error(`Invalid or duplicate command: ${name}`);
++        const command: SlashCommand = {
++          name,
++          description,
++          kind: CommandKind.BUILT_IN,
++          extensionName: id,
++          supportedModes: ['interactive'],
++          modelInvocable: false,
++          canRunDuringStreaming: true,
++          action: async () => undefined,
++        };
++        command.action = async (_context, args) => {
++          try {
++            assertActive();
++            const content = await handler(args);
++            if (signal.aborted || content === undefined) return;
++            return { type: 'message', messageType: 'info', content };
++          } catch (error) {
++            if (signal.aborted) return;
++            return {
++              type: 'message',
++              messageType: 'error',
++              content: `Mod ${id}: ${error instanceof Error ? error.message : String(error)}`,
++            };
++          }
++        };
++        record.commands.push(command);
++        host.commandsChanged();
++        return track(() => {
++          record.commands = record.commands.filter((c) => c !== command);
++          host.commandsChanged();
++        });
++      },
++      runCommand: (name, args = '') => {
++        assertActive();
++        if (!/^[a-z][a-z0-9.-]*$/.test(name))
++          throw new Error('Invalid command name');
++        host.submit(`/${name}${args ? ` ${args}` : ''}`);
++      },
++      prompt: (text) => {
++        assertActive();
++        host.submit(text);
++      },
++      on: (event, callback) => {
++        assertActive();
++        const listeners = record.listeners.get(event) ?? new Set();
++        listeners.add(callback);
++        record.listeners.set(event, listeners);
++        return track(() => {
++          listeners.delete(callback);
++        });
++      },
++      hook: (event, callback, options = {}) => {
++        assertActive();
++        const system = this.config.getHookSystem();
++        if (!system || system.isManaged() || this.config.getDisableAllHooks())
++          throw new Error(
++            'Native mod hooks require local Qwen hooks to be enabled',
++          );
++        if (!Object.values(HookEventName).includes(event as HookEventName))
++          throw new Error(`Unknown hook: ${event}`);
++        const hook: ModRecord['hooks'][number] = {
++          event: event as HookEventName,
++          callback,
++          matcher: options.matcher ?? '*',
++          timeout: options.timeout,
++        };
++        record.hooks.push(hook);
++        this.bindHooks(record);
++        return track(() => {
++          hook.remove?.();
++          record.hooks = record.hooks.filter((h) => h !== hook);
++        });
++      },
++      session: {
++        get: () => {
++          assertActive();
++          return this.getSession();
++        },
++        context: () => {
++          assertActive();
++          return host.context();
++        },
++      },
++      state: {
++        get: <T>(key: string, fallback: T) => {
++          assertActive();
++          return state!.has(key) ? (state!.get(key) as T) : fallback;
++        },
++        set: (key, value) => {
++          assertActive();
++          state!.set(key, value);
++          this.invalidate();
++        },
++      },
++      store: {
++        get: (key, fallback) => {
++          assertActive();
++          return store.get(key, fallback);
++        },
++        set: (key, value) => {
++          assertActive();
++          return store.set(key, value);
++        },
++        update: (key, fallback, change) => {
++          assertActive();
++          return store.update(key, fallback, change);
++        },
++      },
++      ui: {
++        ...host.ui,
++        Button: (props) =>
++          host.ui.React.createElement(host.ui.Button, {
++            ...props,
++            onPress: () => this.invoke(record, props.onPress),
++          }),
++        slot: (slot, component) => {
++          assertActive();
++          if (!['abovePrompt', 'belowPrompt', 'footer'].includes(slot))
++            throw new Error(`Unknown UI slot: ${slot}`);
++          const view = { slot, component, key: `${id}:${randomUUID()}` };
++          record.views.push(view);
++          this.invalidate();
++          return track(() => {
++            record.views = record.views.filter((v) => v !== view);
++            this.invalidate();
++          });
++        },
++        notify: (text, level = 'info') => {
++          assertActive();
++          host.notify(text, level);
++        },
++        invalidate: () => {
++          if (!signal.aborted) this.invalidate();
++        },
++      },
++      timers: {
++        every: (ms, callback) => {
++          assertActive();
++          if (!Number.isFinite(ms) || ms < 100)
++            throw new Error('Timer interval must be at least 100 ms');
++          const timer = setInterval(() => this.invoke(record, callback), ms);
++          timer.unref();
++          return track(() => clearInterval(timer));
++        },
++      },
++      http: {
++        fetch: (url, options = {}) => {
++          assertActive();
++          return fetch(url, {
++            ...options,
++            signal: AbortSignal.any([
++              signal,
++              options.signal ?? AbortSignal.timeout(30_000),
++            ]),
++          });
++        },
++      },
++      process: {
++        run: (file, args = [], options = {}) => {
++          assertActive();
++          return new Promise((resolve, reject) => {
++            execFile(
++              file,
++              args,
++              {
++                cwd: options.cwd ?? this.config.getTargetDir(),
++                timeout: options.timeout ?? 30_000,
++                maxBuffer: 1024 * 1024,
++                encoding: 'utf8',
++                signal,
++              },
++              (error, stdout, stderr) => {
++                if (error) reject(error);
++                else resolve({ stdout, stderr });
++              },
++            );
++          });
++        },
++      },
++      experimental: { config: this.config },
++    };
++  }
++
++  private async load(directory: string): Promise<string> {
++    if (this.config.isSafeMode() || this.config.getBareMode())
++      throw new Error('Mods are disabled in safe or bare mode');
++    if (!this.host || !this.snapshot || this.disposed)
++      throw new Error(
++        'Mods are available after the interactive Ink session is ready',
++      );
++    const root = await realpath(
++      path.resolve(this.config.getTargetDir(), directory),
++    );
++    const manifest = JSON.parse(
++      await readFile(path.join(root, 'qwen-mod.json'), 'utf8'),
++    ) as ModManifest;
++    if (
++      !manifest ||
++      manifest.apiVersion !== 1 ||
++      typeof manifest.id !== 'string' ||
++      !/^[a-z][a-z0-9-]{0,63}$/.test(manifest.id) ||
++      typeof manifest.entry !== 'string'
++    )
++      throw new Error(
++        'Invalid qwen-mod.json. Expected id, apiVersion: 1 and entry',
++      );
++    if (this.records.has(manifest.id))
++      throw new Error(
++        `Mod ${manifest.id} is already loaded. Use /mods reload ${manifest.id}`,
++      );
++    const entry = await realpath(path.resolve(root, manifest.entry));
++    const relative = path.relative(root, entry);
++    if (
++      relative.startsWith(`..${path.sep}`) ||
++      relative === '..' ||
++      path.isAbsolute(relative) ||
++      !/\.(mjs|js)$/.test(entry)
++    )
++      throw new Error(
++        'Mod entry must be a .mjs or .js file inside its directory',
++      );
++    if (this.disposed) throw new Error('Mod loading cancelled');
++    const record: ModRecord = {
++      manifest,
++      directory: root,
++      abort: new AbortController(),
++      cleanups: new Set(),
++      commands: [],
++      views: [],
++      listeners: new Map(),
++      hooks: [],
++    };
++    this.records.set(manifest.id, record);
++    try {
++      const module = (await import(
++        `${pathToFileURL(entry).href}?qwen_mod=${randomUUID()}`
++      )) as QwenModModule;
++      if (record.abort.signal.aborted || this.disposed)
++        throw new Error('Mod loading cancelled');
++      if (typeof module.register !== 'function')
++        throw new Error('Mod entry must export register(api)');
++      const cleanup = await module.register(this.api(record));
++      if (cleanup) {
++        if (typeof cleanup !== 'function')
++          throw new Error(
++            'register must return a cleanup function or undefined',
++          );
++        if (record.abort.signal.aborted) cleanup();
++        else record.cleanups.add(cleanup);
++      }
++      if (record.abort.signal.aborted || this.disposed)
++        throw new Error('Mod loading cancelled');
++      this.emit(record, 'session.start', this.getSession());
++      this.emit(record, 'session.update', this.getSession());
++      this.invalidate();
++      this.host.commandsChanged();
++      return manifest.id;
++    } catch (error) {
++      this.unload(manifest.id);
++      throw error;
++    }
++  }
++
++  private unload(id: string): void {
++    const record = this.records.get(id);
++    if (!record) return;
++    record.abort.abort();
++    for (const cleanup of [...record.cleanups].reverse()) {
++      try {
++        cleanup();
++      } catch (error) {
++        this.report(id, error);
++      }
++    }
++    record.cleanups.clear();
++    this.records.delete(id);
++    this.invalidate();
++    this.host?.commandsChanged();
++  }
++
++  private async enabled(): Promise<Record<string, string>> {
++    const entries = await this.registry.get('entries', {});
++    if (
++      !entries ||
++      typeof entries !== 'object' ||
++      Array.isArray(entries) ||
++      Object.entries(entries).some(
++        ([id, p]) =>
++          !/^[a-z][a-z0-9-]{0,63}$/.test(id) ||
++          typeof p !== 'string' ||
++          !path.isAbsolute(p),
++      )
++    )
++      throw new Error('Invalid enabled mods registry');
++    return entries as Record<string, string>;
++  }
++
++  async start(): Promise<void> {
++    if (this.config.isSafeMode() || this.config.getBareMode()) return;
++    try {
++      for (const [expectedId, directory] of Object.entries(
++        await this.enabled(),
++      )) {
++        if (this.disposed) return;
++        try {
++          const manifest = JSON.parse(
++            await readFile(path.join(directory, 'qwen-mod.json'), 'utf8'),
++          ) as ModManifest;
++          if (manifest.id !== expectedId)
++            throw new Error(
++              'Enabled mod ID changed. Disable the old ID and enable the directory again',
++            );
++          await this.manage('load', directory);
++        } catch (error) {
++          this.report(expectedId, error);
++        }
++      }
++    } catch (error) {
++      this.report('registry', error);
++    }
++  }
++
++  manage(action: string, argument = ''): Promise<string> {
++    const task = this.queue.then(async () => {
++      if (this.disposed) throw new Error('Mod runtime is closed');
++      if (action === 'list') {
++        const enabled = await this.enabled();
++        const ids = new Set([...this.records.keys(), ...Object.keys(enabled)]);
++        return (
++          [...ids]
++            .map(
++              (id) =>
++                `${id}: ${this.records.has(id) ? 'loaded' : 'unloaded'}${enabled[id] ? ', enabled on startup' : ''}`,
++            )
++            .join('\n') ||
++          'No mods loaded. /mods load <directory> runs trusted local JavaScript with full Node.js access.'
++        );
++      }
++      if (!argument)
++        throw new Error(
++          'Usage: /mods list | load <directory> | enable <directory> | reload <id> | unload <id> | disable <id>',
++        );
++      if (action === 'load' || action === 'enable') {
++        const directory = await realpath(
++          path.resolve(this.config.getTargetDir(), argument),
++        );
++        const existing = [...this.records.values()].find(
++          (r) => r.directory === directory,
++        );
++        const id =
++          action === 'enable' && existing
++            ? existing.manifest.id
++            : await this.load(directory);
++        if (action === 'enable') {
++          try {
++            await this.enabled();
++            await this.registry.update('entries', {}, (entries) => ({
++              ...(entries as Record<string, string>),
++              [id]: directory,
++            }));
++          } catch (error) {
++            if (!existing) this.unload(id);
++            throw error;
++          }
++        }
++        return `${action === 'enable' ? 'Enabled' : 'Loaded'} ${id}. Trusted code has full Node.js access.`;
++      }
++      if (action === 'reload') {
++        const directory = this.records.get(argument)?.directory;
++        if (!directory) throw new Error(`Mod ${argument} is not loaded`);
++        this.unload(argument);
++        return `Reloaded ${await this.load(directory)}.`;
++      }
++      if (action === 'unload' || action === 'disable') {
++        if (action === 'disable') {
++          await this.enabled();
++          await this.registry.update('entries', {}, (entries) => {
++            const next = { ...(entries as Record<string, string>) };
++            delete next[argument];
++            return next;
++          });
++        } else if (!this.records.has(argument))
++          throw new Error(`Mod ${argument} is not loaded`);
++        this.unload(argument);
++        return `${action === 'disable' ? 'Disabled' : 'Unloaded'} ${argument}.`;
++      }
++      throw new Error(`Unknown mods action: ${action}`);
++    });
++    this.queue = task.catch(() => undefined);
++    return task;
++  }
++
++  dispose(): void {
++    this.disposed = true;
++    if (this.snapshot)
++      for (const record of this.records.values())
++        this.emit(record, 'session.end', this.snapshot);
++    for (const id of this.records.keys()) this.unload(id);
++    this.host = undefined;
++  }
++}
++
++const runtimes = new WeakMap<Config, ModRuntime>();
++export function getModRuntime(config: Config): ModRuntime {
++  let runtime = runtimes.get(config);
++  if (!runtime) {
++    runtime = new ModRuntime(config);
++    runtimes.set(config, runtime);
++  }
++  return runtime;
++}
+diff --git a/packages/cli/src/ui/AppContainer.tsx b/packages/cli/src/ui/AppContainer.tsx
+index 8889b20..1f68a4d 100644
+--- a/packages/cli/src/ui/AppContainer.tsx
++++ b/packages/cli/src/ui/AppContainer.tsx
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
++import { ModsHost } from '../mods/ModsHost.js';
+ import {
+   useMemo,
+   useState,
+@@ -5627,6 +5628,11 @@ export const AppContainer = (props: AppContainerProps) => {
+                         <ContextMenuProvider
+                           onMenuChange={handleContextMenuChange}
+                         >
++                          <ModsHost
++                            activeMainSession={
++                              agentViewState.activeView === 'main'
++                            }
++                          />
+                           <App />
+                         </ContextMenuProvider>
+                       </ShellFocusContext.Provider>
+diff --git a/packages/cli/src/ui/components/Composer.test.tsx b/packages/cli/src/ui/components/Composer.test.tsx
+index 0ae5634..b32d453 100644
+--- a/packages/cli/src/ui/components/Composer.test.tsx
++++ b/packages/cli/src/ui/components/Composer.test.tsx
+@@ -16,6 +16,8 @@ import {
+ } from '../contexts/UIActionsContext.js';
+ import { ConfigContext } from '../contexts/ConfigContext.js';
+ // Mock VimModeContext hook
++vi.mock('../../mods/ModsHost.js', () => ({ ModsSlot: () => null }));
++
+ vi.mock('../contexts/VimModeContext.js', () => ({
+   useVimModeState: vi.fn(() => ({
+     vimEnabled: false,
+diff --git a/packages/cli/src/ui/components/Composer.tsx b/packages/cli/src/ui/components/Composer.tsx
+index e9bf24e..dd0bad9 100644
+--- a/packages/cli/src/ui/components/Composer.tsx
++++ b/packages/cli/src/ui/components/Composer.tsx
+@@ -9,6 +9,7 @@ import { useCallback, useRef, useState, type RefObject } from 'react';
+ import { LoadingIndicator } from './LoadingIndicator.js';
+ import { InputPrompt } from './InputPrompt.js';
+ import { Footer } from './Footer.js';
++import { ModsSlot } from '../../mods/ModsHost.js';
+ import { QueuedMessageDisplay } from './QueuedMessageDisplay.js';
+ import { KeyboardShortcuts } from './KeyboardShortcuts.js';
+ import { useUIState } from '../contexts/UIStateContext.js';
+@@ -115,6 +116,8 @@ export const Composer = ({ footerRef }: ComposerProps) => {
+ 
+       {uiState.isFeedbackDialogOpen && <FeedbackDialog />}
+ 
++      <ModsSlot slot="abovePrompt" />
++
+       {uiState.isInputActive && (
+         <InputPrompt
+           buffer={uiState.buffer}
+@@ -150,6 +153,8 @@ export const Composer = ({ footerRef }: ComposerProps) => {
+         />
+       )}
+ 
++      <ModsSlot slot="belowPrompt" />
++
+       {/* Exclusive area: only one component visible at a time */}
+       {/* Hide footer when a confirmation dialog (e.g. ask_user_question) is active */}
+       {/* The footer is the only production consumer of useConfigInitMessage,
+diff --git a/packages/cli/src/ui/components/Footer.test.tsx b/packages/cli/src/ui/components/Footer.test.tsx
+index 7679550..a9c05e3 100644
+--- a/packages/cli/src/ui/components/Footer.test.tsx
++++ b/packages/cli/src/ui/components/Footer.test.tsx
+@@ -33,6 +33,8 @@ import { KeypressProvider } from '../contexts/KeypressContext.js';
+ import type { LoadedSettings } from '../../config/settings.js';
+ import { StreamingState } from '../types.js';
+ 
++vi.mock('../../mods/ModsHost.js', () => ({ ModsSlot: () => null }));
++
+ vi.mock('../hooks/useTerminalSize.js');
+ const useTerminalSizeMock = vi.mocked(useTerminalSize.useTerminalSize);
+ 
+diff --git a/packages/cli/src/ui/components/Footer.tsx b/packages/cli/src/ui/components/Footer.tsx
+index 3b0f27d..e00a79f 100644
+--- a/packages/cli/src/ui/components/Footer.tsx
++++ b/packages/cli/src/ui/components/Footer.tsx
+@@ -10,6 +10,7 @@ import { type RefObject, useRef } from 'react';
+ import { type DOMElement, Box, Text, useBoxMetrics } from 'ink';
+ import { theme } from '../semantic-colors.js';
+ import { ContextUsageDisplay } from './ContextUsageDisplay.js';
++import { ModsSlot } from '../../mods/ModsHost.js';
+ import { useTerminalSize } from '../hooks/useTerminalSize.js';
+ import { AutoAcceptIndicator } from './AutoAcceptIndicator.js';
+ import { ShellModeIndicator } from './ShellModeIndicator.js';
+@@ -231,6 +232,10 @@ export const Footer: React.FC<FooterProps> = ({ containerRef }) => {
+         flexShrink={isNarrow ? 0 : 1}
+         minWidth={0}
+       >
++        <ModsSlot
++          slot="footer"
++          availableWidth={hasMeasuredStatusLine ? statusLineWidth : undefined}
++        />
+         {executionSandbox && (
+           <Text color={theme.text.secondary} wrap="wrap">
+             {executionSandbox}
+diff --git a/packages/cli/src/ui/hooks/slashCommandProcessor.test.ts b/packages/cli/src/ui/hooks/slashCommandProcessor.test.ts
+index fc38a69..62e7f66 100644
+--- a/packages/cli/src/ui/hooks/slashCommandProcessor.test.ts
++++ b/packages/cli/src/ui/hooks/slashCommandProcessor.test.ts
+@@ -84,6 +84,12 @@ vi.mock('node:process', () => {
+   };
+ });
+ 
++vi.mock('../../mods/command-loader.js', () => ({
++  ModCommandLoader: vi
++    .fn()
++    .mockImplementation(() => ({ loadCommands: async () => [] })),
++}));
++
+ const mockBuiltinLoadCommands = vi.fn();
+ vi.mock('../../services/BuiltinCommandLoader.js', () => ({
+   BuiltinCommandLoader: vi.fn().mockImplementation(() => ({
+diff --git a/packages/cli/src/ui/hooks/slashCommandProcessor.ts b/packages/cli/src/ui/hooks/slashCommandProcessor.ts
+index d287466..980aba9 100644
+--- a/packages/cli/src/ui/hooks/slashCommandProcessor.ts
++++ b/packages/cli/src/ui/hooks/slashCommandProcessor.ts
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
++import { ModCommandLoader } from '../../mods/command-loader.js';
+ import {
+   useCallback,
+   useMemo,
+@@ -770,6 +771,7 @@ export const useSlashCommandProcessor = (
+           new SkillCommandLoader(config),
+           new SavedWorkflowLoader(config),
+           new FileCommandLoader(config),
++          new ModCommandLoader(config),
+         ];
+         const disabled = config?.getDisabledSlashCommands() ?? [];
+         const commandService = await CommandService.create(

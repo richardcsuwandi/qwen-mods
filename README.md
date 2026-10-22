@@ -6,7 +6,7 @@ Small terminal add-ons for [Qwen Code](https://github.com/QwenLM/qwen-code). A d
 
 They are adapted from [Claude Mods](https://github.com/richardcsuwandi/claude-mods).
 
-> **Status.** These modules need the Qwen Mods runtime patch, API version 1, in the interactive Ink CLI. They do not run on stock Qwen Code or on Claude Code. The runtime is developed in a Qwen Code fork and is not submitted upstream yet. This repository holds the mods and examples, and the loader, API and UI integration belong in Qwen Code.
+> **Status.** These modules run on the Qwen Mods runtime, API version 1, in the interactive Ink CLI. Stock Qwen Code and Claude Code do not include it. The runtime ships here as a patch you apply to Qwen Code, see [runtime/](runtime). It is not submitted upstream yet.
 
 ## What they look like
 
@@ -34,15 +34,14 @@ When the context passes 85 percent the usage bar adds a Compress button, and it 
 
 ## Get started
 
+Build a patched Qwen Code first. [runtime/README.md](runtime/README.md) has the exact commands, which are a checkout of one upstream commit, `git apply` of [the patch](runtime/qwen-mods-runtime.patch), and a build.
+
+Then clone this repository and start the patched CLI from inside it.
+
 ```sh
 git clone https://github.com/richardcsuwandi/qwen-mods.git
 cd qwen-mods
-```
-
-Start your Qwen Code build that includes the runtime patch, keeping this directory as the working directory. If your patched checkout is beside this repository and you have already built and bundled it:
-
-```sh
-QWEN_TUI_RENDERER=ink node ../qwen-code/dist/cli.js
+QWEN_TUI_RENDERER=ink node /path/to/qwen-code/dist/cli.js
 ```
 
 Then load the mods:
