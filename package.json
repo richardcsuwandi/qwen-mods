@@ -9,7 +9,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test test/mods.test.mjs test/manifests.test.mjs"
   },
   "repository": {
     "type": "git",
